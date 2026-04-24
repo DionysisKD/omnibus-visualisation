@@ -102,6 +102,56 @@
   /* Search match highlight */
   mark { background: #fde68a; color: inherit; padding: 0 2px; border-radius: 2px; }
 
+
+  /* Active chapter highlight in sidebar */
+  .chapter-nav-btn.active-chapter {
+    background: #eef2ff;
+    color: #4338ca;
+  }
+  .chapter-nav-btn.active-chapter .text-gray-800 { color: #4338ca; }
+
+  /* Chapter count pill */
+  .ch-count {
+    display: inline-block;
+    font-size: 9px;
+    color: #6b7280;
+    background: #f3f4f6;
+    border-radius: 10px;
+    padding: 1px 6px;
+    margin-left: 4px;
+    font-weight: 500;
+  }
+
+  /* Search classification filter chips */
+  #search-filter {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .filter-chip {
+    font-size: 9px;
+    padding: 2px 5px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: white;
+    color: #6b7280;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .filter-chip:hover { border-color: #a5b4fc; color: #4338ca; }
+  .filter-chip.active {
+    background: #4338ca;
+    color: white;
+    border-color: #4338ca;
+  }
+
+  /* Compare list active state */
+  .compare-item.active {
+    background: #eef2ff !important;
+    border-color: #a5b4fc !important;
+  }
+
   </style>
 </head>
 <body class="h-full bg-gray-50 text-gray-900 text-sm font-sans">
@@ -333,6 +383,9 @@
       renderSource();
       renderCompare();
 
+      // Apply URL hash state (deep link support)
+      setTimeout(applyHash, 100);
+
     } catch (err) {
       document.getElementById('loading').innerHTML =
         `<p class="text-red-500">Error initialising app: ${escHtml(err.message)}</p>`;
@@ -375,7 +428,16 @@
     const searchBox = document.createElement('div');
     searchBox.className = 'px-3 py-2 border-b border-gray-200';
     searchBox.innerHTML = `<input id="browse-search" type="text" placeholder="Search…"
-      class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />`;
+      class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+      <div id="search-filter" class="hidden">
+        <button class="filter-chip active" data-class="ALL">All</button>
+        <button class="filter-chip" data-class="MODIFIEDINSERTED">Mod</button>
+        <button class="filter-chip" data-class="DELETED">Del</button>
+        <button class="filter-chip" data-class="VERBATIMINSERTED">Verb</button>
+        <button class="filter-chip" data-class="SUBSTITUTIONMODIFIED">Subst</button>
+        <button class="filter-chip" data-class="NEW">New</button>
+        <button class="filter-chip" data-class="RETAINED">Ret</button>
+      </div>`;
     sidebar.appendChild(searchBox);
 
     // Chapter nav list
@@ -386,13 +448,17 @@
     chapterList.innerHTML = STATE.chapters.filter(ch => {
       if (_seenCh.has(ch.chapter)) return false;
       _seenCh.add(ch.chapter); return true;
-    }).map(ch => `
+    }).map(ch => {
+      const chSpans = STATE.allSpans.filter(s => s._chapter === ch.chapter);
+      const changes = chSpans.filter(s => s.classification !== 'RETAINED').length;
+      const pill = changes > 0 ? `<span class="ch-count" title="${changes} amendments in this chapter">${changes}</span>` : '';
+      return `
       <button class="chapter-nav-btn w-full text-left px-4 py-1.5 text-xs hover:bg-gray-50 text-gray-600"
               data-chapter="${escHtml(ch.chapter)}">
-        <span class="font-semibold text-gray-800">Ch. ${escHtml(ch.chapter)}</span>
+        <span class="font-semibold text-gray-800">Ch. ${escHtml(ch.chapter)}${pill}</span>
         <span class="block text-gray-500 leading-tight truncate">${escHtml(ch.chapter_title)}</span>
-      </button>
-    `).join('');
+      </button>`;
+    }).join('');
     sidebar.appendChild(chapterList);
 
     // Search results list (hidden when not searching)
@@ -400,6 +466,21 @@
     searchResults.id = 'browse-search-results';
     searchResults.className = 'hidden overflow-y-auto flex-1';
     sidebar.appendChild(searchResults);
+
+    // Wire classification filter chips (re-run search when chip clicked)
+    setTimeout(() => {
+      const filterBar = document.getElementById('search-filter');
+      if (filterBar) {
+        filterBar.addEventListener('click', e => {
+          const chip = e.target.closest('.filter-chip');
+          if (!chip) return;
+          filterBar.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          const input = document.getElementById('browse-search');
+          if (input && input.value) doSearch(input.value);
+        });
+      }
+    }, 0);
 
     // Main content — gray background, white document card inside
     const content = document.createElement('div');
@@ -521,6 +602,22 @@
 
     panel.appendChild(sidebar);
     panel.appendChild(content);
+
+    // Active chapter highlight via IntersectionObserver
+    setTimeout(() => {
+      const chHeads = content.querySelectorAll('[id^="chapter-"]');
+      const navBtns = sidebar.querySelectorAll('.chapter-nav-btn');
+      if (!chHeads.length || !navBtns.length) return;
+      const obs = new IntersectionObserver((entries) => {
+        const visible = entries.filter(e => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (!visible) return;
+        const chKey = visible.target.id.match(/^chapter-([^-]+)/)?.[1];
+        if (!chKey) return;
+        navBtns.forEach(b => b.classList.toggle('active-chapter', b.dataset.chapter === chKey));
+      }, { root: content, rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+      chHeads.forEach(el => obs.observe(el));
+    }, 50);
 
     // Chapter nav → scroll
     sidebar.addEventListener('click', e => {
@@ -648,13 +745,24 @@
 
   function doSearch(query) {
     const container = document.getElementById('search-results');
-    if (!query) { container.innerHTML = ''; return; }
+    const filterEl = document.getElementById('search-filter');
+    if (!query) {
+      container.innerHTML = '';
+      if (filterEl) filterEl.classList.add('hidden');
+      return;
+    }
+    if (filterEl) filterEl.classList.remove('hidden');
 
     const lower = query.toLowerCase();
+    const activeChip = document.querySelector('#search-filter .filter-chip.active');
+    const cls = activeChip ? activeChip.dataset.class : 'ALL';
+
     const hits = STATE.allSpans.filter(s =>
-      s.text?.toLowerCase().includes(lower) ||
-      s.paragraph?.toLowerCase().includes(lower) ||
-      s.note?.toLowerCase().includes(lower)
+      (cls === 'ALL' || s.classification === cls) && (
+        s.text?.toLowerCase().includes(lower) ||
+        s.paragraph?.toLowerCase().includes(lower) ||
+        s.note?.toLowerCase().includes(lower)
+      )
     ).slice(0, 60);
 
     if (!hits.length) {
@@ -678,6 +786,7 @@
 
   function scrollToSpan(spanId) {
     document.querySelector('[data-tab="browse"]').click();
+    updateHash({ tab: 'browse', span: spanId });
     setTimeout(() => {
       const el = document.querySelector(`[data-span-id="${spanId}"]`);
       if (el) {
@@ -790,7 +899,18 @@
 
     buildList('');
 
-    document.getElementById('compare-filter').addEventListener('input', e => buildList(e.target.value));
+    // Auto-select first span so the right pane is not empty
+    // (setTimeout 0 so the list click listener below is attached first)
+    setTimeout(() => {
+      const _firstItem = document.querySelector('#compare-list .compare-item');
+      if (_firstItem) _firstItem.click();
+    }, 0);
+
+    document.getElementById('compare-filter').addEventListener('input', e => {
+      buildList(e.target.value);
+      const first = document.querySelector('#compare-list .compare-item');
+      if (first) first.click();
+    });
 
     document.getElementById('compare-list').addEventListener('click', e => {
       const btn = e.target.closest('.compare-item');
@@ -798,8 +918,8 @@
 
       // Highlight active
       document.querySelectorAll('.compare-item').forEach(b =>
-        b.classList.remove('bg-indigo-50','border-indigo-300'));
-      btn.classList.add('bg-indigo-50','border-indigo-300');
+        b.classList.remove('bg-indigo-50','border-indigo-300','active'));
+      btn.classList.add('bg-indigo-50','border-indigo-300','active');
 
       const span = STATE.allSpans.find(s => s.id === btn.dataset.spanId);
       if (!span) return;
@@ -838,6 +958,68 @@
     });
   }
 
+  // ─── URL hash state ──────────────────────────────────────────────────────────
+  function parseHash() {
+    const h = window.location.hash.replace(/^#/, '');
+    if (!h) return {};
+    const out = {};
+    for (const pair of h.split('&')) {
+      const [k, v] = pair.split('=');
+      if (k && v) out[decodeURIComponent(k)] = decodeURIComponent(v);
+    }
+    return out;
+  }
+  let _updateHashSilent = false;
+  function updateHash(patch) {
+    const current = parseHash();
+    const next = { ...current, ...patch };
+    for (const k of Object.keys(next)) {
+      if (next[k] == null || next[k] === '') delete next[k];
+    }
+    const h = Object.entries(next).map(([k, v]) =>
+      `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+    _updateHashSilent = true;
+    if (h) history.replaceState(null, '', '#' + h);
+    else history.replaceState(null, '', window.location.pathname + window.location.search);
+    _updateHashSilent = false;
+  }
+  function applyHash() {
+    const { tab, span, chapter } = parseHash();
+    if (tab) {
+      const tabBtn = document.querySelector(`[data-tab="${tab}"]`);
+      if (tabBtn) tabBtn.click();
+    }
+    if (span) {
+      setTimeout(() => {
+        const t = parseHash().tab || 'browse';
+        if (t === 'compare') {
+          const item = document.querySelector(`.compare-item[data-span-id="${span}"]`);
+          if (item) {
+            item.click();
+            item.scrollIntoView({ block: 'center' });
+          }
+        } else {
+          const el = document.querySelector(`[data-span-id="${span}"]`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => {
+              if (STATE.activeSpanId !== span) toggleAccordion(span);
+            }, 300);
+          }
+        }
+      }, 150);
+    } else if (chapter) {
+      setTimeout(() => {
+        const ch = document.getElementById(`chapter-${chapter}-1`);
+        if (ch) ch.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    }
+  }
+  window.addEventListener('hashchange', () => {
+    if (_updateHashSilent) return;
+    applyHash();
+  });
+
   function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -851,6 +1033,8 @@
         // Panels
         document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
         document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+        // Reflect in URL hash (preserve span if on same tab context)
+        updateHash({ tab: btn.dataset.tab });
       });
     });
   }
