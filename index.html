@@ -110,40 +110,15 @@
   }
   .chapter-nav-btn.active-chapter .text-gray-800 { color: #4338ca; }
 
-  /* Chapter count pill */
-  .ch-count {
+  /* Chapter amendment dot */
+  .ch-dot {
     display: inline-block;
-    font-size: 9px;
-    color: #6b7280;
-    background: #f3f4f6;
-    border-radius: 10px;
-    padding: 1px 6px;
-    margin-left: 4px;
-    font-weight: 500;
-  }
-
-  /* Search classification filter chips */
-  #search-filter {
-    display: flex;
-    gap: 3px;
-    flex-wrap: wrap;
-    margin-top: 6px;
-  }
-  .filter-chip {
-    font-size: 9px;
-    padding: 2px 5px;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    background: white;
-    color: #6b7280;
-    cursor: pointer;
-    font-weight: 500;
-  }
-  .filter-chip:hover { border-color: #a5b4fc; color: #4338ca; }
-  .filter-chip.active {
-    background: #4338ca;
-    color: white;
-    border-color: #4338ca;
+    width: 7px;
+    height: 7px;
+    background: #f97316;
+    border-radius: 50%;
+    margin-left: 6px;
+    vertical-align: middle;
   }
 
   /* Compare list active state */
@@ -428,16 +403,7 @@
     const searchBox = document.createElement('div');
     searchBox.className = 'px-3 py-2 border-b border-gray-200';
     searchBox.innerHTML = `<input id="browse-search" type="text" placeholder="Search…"
-      class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
-      <div id="search-filter" class="hidden">
-        <button class="filter-chip active" data-class="ALL">All</button>
-        <button class="filter-chip" data-class="MODIFIEDINSERTED">Mod</button>
-        <button class="filter-chip" data-class="DELETED">Del</button>
-        <button class="filter-chip" data-class="VERBATIMINSERTED">Verb</button>
-        <button class="filter-chip" data-class="SUBSTITUTIONMODIFIED">Subst</button>
-        <button class="filter-chip" data-class="NEW">New</button>
-        <button class="filter-chip" data-class="RETAINED">Ret</button>
-      </div>`;
+      class="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />`;
     sidebar.appendChild(searchBox);
 
     // Chapter nav list
@@ -449,16 +415,21 @@
       if (_seenCh.has(ch.chapter)) return false;
       _seenCh.add(ch.chapter); return true;
     }).map(ch => {
-      const chSpans = STATE.allSpans.filter(s => s._chapter === ch.chapter);
-      const changes = chSpans.filter(s => s.classification !== 'RETAINED').length;
-      const pill = changes > 0 ? `<span class="ch-count" title="${changes} amendments in this chapter">${changes}</span>` : '';
+      const hasChanges = STATE.allSpans.some(s => s._chapter === ch.chapter && s.classification !== 'RETAINED');
+      const dot = hasChanges ? '<span class="ch-dot" title="Chapter contains amendments"></span>' : '';
       return `
       <button class="chapter-nav-btn w-full text-left px-4 py-1.5 text-xs hover:bg-gray-50 text-gray-600"
               data-chapter="${escHtml(ch.chapter)}">
-        <span class="font-semibold text-gray-800">Ch. ${escHtml(ch.chapter)}${pill}</span>
+        <span class="font-semibold text-gray-800">Ch. ${escHtml(ch.chapter)}${dot}</span>
         <span class="block text-gray-500 leading-tight truncate">${escHtml(ch.chapter_title)}</span>
       </button>`;
     }).join('');
+    // Dot legend
+    const dotLegend = document.createElement('div');
+    dotLegend.className = 'px-3 py-1 text-[10px] text-gray-500 border-b border-gray-100 flex items-center gap-1';
+    dotLegend.innerHTML = '<span class="ch-dot" style="margin-left:0"></span><span>= chapter has amendments</span>';
+    sidebar.insertBefore(dotLegend, chapterList);
+
     sidebar.appendChild(chapterList);
 
     // Search results list (hidden when not searching)
@@ -466,21 +437,6 @@
     searchResults.id = 'browse-search-results';
     searchResults.className = 'hidden overflow-y-auto flex-1';
     sidebar.appendChild(searchResults);
-
-    // Wire classification filter chips (re-run search when chip clicked)
-    setTimeout(() => {
-      const filterBar = document.getElementById('search-filter');
-      if (filterBar) {
-        filterBar.addEventListener('click', e => {
-          const chip = e.target.closest('.filter-chip');
-          if (!chip) return;
-          filterBar.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-          chip.classList.add('active');
-          const input = document.getElementById('browse-search');
-          if (input && input.value) doSearch(input.value);
-        });
-      }
-    }, 0);
 
     // Main content — gray background, white document card inside
     const content = document.createElement('div');
@@ -624,7 +580,7 @@
       const btn = e.target.closest('.chapter-nav-btn');
       if (!btn) return;
       const target = document.getElementById(`chapter-${btn.dataset.chapter}-1`);
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (target) target.scrollIntoView({ behavior: 'auto', block: 'start' });
     });
 
     // Sidebar search
@@ -745,24 +701,13 @@
 
   function doSearch(query) {
     const container = document.getElementById('search-results');
-    const filterEl = document.getElementById('search-filter');
-    if (!query) {
-      container.innerHTML = '';
-      if (filterEl) filterEl.classList.add('hidden');
-      return;
-    }
-    if (filterEl) filterEl.classList.remove('hidden');
+    if (!query) { container.innerHTML = ''; return; }
 
     const lower = query.toLowerCase();
-    const activeChip = document.querySelector('#search-filter .filter-chip.active');
-    const cls = activeChip ? activeChip.dataset.class : 'ALL';
-
     const hits = STATE.allSpans.filter(s =>
-      (cls === 'ALL' || s.classification === cls) && (
-        s.text?.toLowerCase().includes(lower) ||
-        s.paragraph?.toLowerCase().includes(lower) ||
-        s.note?.toLowerCase().includes(lower)
-      )
+      s.text?.toLowerCase().includes(lower) ||
+      s.paragraph?.toLowerCase().includes(lower) ||
+      s.note?.toLowerCase().includes(lower)
     ).slice(0, 60);
 
     if (!hits.length) {
@@ -1011,7 +956,7 @@
     } else if (chapter) {
       setTimeout(() => {
         const ch = document.getElementById(`chapter-${chapter}-1`);
-        if (ch) ch.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (ch) ch.scrollIntoView({ behavior: 'auto', block: 'start' });
       }, 150);
     }
   }
@@ -1039,6 +984,6 @@
     });
   }
   </script>
-  <p id="build-stamp" style="position:fixed;bottom:10px;right:28px;font-size:9px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:2px 7px;z-index:50;pointer-events:none;">508 spans · 16 chapters · built 2026-04-24</p>
+  <p id="build-stamp" style="position:fixed;bottom:10px;right:28px;font-size:9px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:2px 7px;z-index:50;pointer-events:none;">508 spans · 16 chapters · built 2026-04-25</p>
 </body>
 </html>
