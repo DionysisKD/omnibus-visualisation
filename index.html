@@ -150,17 +150,22 @@
 
     /* Council modal */
   .council-modal-backdrop {
-    position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:1000;
-    display:flex; align-items:flex-start; justify-content:center; padding:6vh 4vw;
-    overflow-y:auto;
+    position:fixed; inset:0; background:rgba(15,23,42,.18); z-index:1000;
+    pointer-events:none;
   }
   .council-modal-backdrop.hidden { display:none; }
   .council-modal {
-    background:#fff; max-width:780px; width:100%; border-radius:10px;
-    box-shadow:0 25px 70px rgba(0,0,0,.35); padding:24px 28px;
+    position:fixed; top:8vh; left:50%; transform:translateX(-50%);
+    background:#fff; max-width:780px; width:calc(100% - 8vw); border-radius:10px;
+    box-shadow:0 25px 70px rgba(0,0,0,.35); padding:0 0 24px;
     font-size:13px; line-height:1.55; color:#1e293b;
-    max-height:80vh; overflow-y:auto;
+    max-height:82vh; overflow-y:auto;
+    z-index:1001; pointer-events:auto;
   }
+  .council-modal-drag-handle { display:flex; align-items:flex-start; gap:8px; cursor:grab; user-select:none; padding:14px 20px 12px; background:#f8fafc; border-radius:9px 9px 0 0; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:2; }
+  .council-modal-drag-handle:active { cursor:grabbing; }
+  .council-modal-drag-handle h3 { flex:1; font-size:16px; font-weight:700; color:#0f172a; margin:0; }
+  .council-modal-inner { padding:16px 24px 0; }
   .council-modal h3 { font-size:16px; font-weight:700; color:#0f172a; margin:0 0 4px; }
   .council-modal .council-prov { font-family:ui-monospace,SFMono-Regular,monospace; font-size:11.5px; color:#475569; background:#f1f5f9; padding:2px 6px; border-radius:3px; display:inline-block; margin-bottom:8px; }
   .council-modal .council-rationale { margin:12px 0 16px; padding:10px 12px; background:#fffbeb; border-left:3px solid #f59e0b; font-style:italic; color:#78350f; }
@@ -173,7 +178,7 @@
   .council-modal .council-meta .pill.kind-DELETED { background:#fee2e2; color:#991b1b; }
   .council-modal .council-meta .pill.layer-recital { background:#f3e8ff; color:#6b21a8; }
   .council-modal .council-meta .pill.group-cyber { background:#dbeafe; color:#1e40af; }
-  .council-modal-close { position:absolute; top:14px; right:18px; background:none; border:none; font-size:22px; cursor:pointer; color:#94a3b8; }
+  .council-modal-close { flex-shrink:0; background:none; border:none; font-size:22px; cursor:pointer; color:#94a3b8; line-height:1; padding:0; margin-left:auto; order:99; }
   .council-modal-close:hover { color:#475569; }
 
   /* Council tab styling */
@@ -1222,7 +1227,7 @@
       if (modalEl) return modalEl;
       const d = document.createElement('div');
       d.className = 'council-modal-backdrop hidden';
-      d.innerHTML = '<div class="council-modal" style="position:relative;"><button class="council-modal-close" aria-label="Close">&times;</button><div class="council-modal-inner"></div></div>';
+      d.innerHTML = '<div class="council-modal"><div class="council-modal-drag-handle"><button class="council-modal-close" aria-label="Close">&times;</button></div><div class="council-modal-inner"></div></div>';
       document.body.appendChild(d);
       d.addEventListener('click', (e) => {
         if (e.target === d || e.target.classList.contains('council-modal-close')) {
@@ -1232,6 +1237,27 @@
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') d.classList.add('hidden');
       });
+      // Drag logic
+      const modal = d.querySelector('.council-modal');
+      const handle = d.querySelector('.council-modal-drag-handle');
+      let dragging = false, ox = 0, oy = 0;
+      handle.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('council-modal-close')) return;
+        dragging = true;
+        const r = modal.getBoundingClientRect();
+        modal.style.transform = 'none';
+        modal.style.left = r.left + 'px';
+        modal.style.top = r.top + 'px';
+        ox = e.clientX - r.left;
+        oy = e.clientY - r.top;
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        modal.style.left = (e.clientX - ox) + 'px';
+        modal.style.top  = (e.clientY - oy) + 'px';
+      });
+      document.addEventListener('mouseup', () => { dragging = false; });
       modalEl = d;
       return d;
     }
@@ -1249,9 +1275,11 @@
       const showProv = (headLabel !== change.provision)
         ? '<div class="council-prov">' + escHtml_c(change.provision) + '</div>'
         : '';
+      d.querySelector('.council-modal-drag-handle').innerHTML =
+        '<button class="council-modal-close" aria-label="Close">&times;</button>' +
+        '<h3 style="flex:1;margin:0;">' + escHtml_c(headLabel) + '</h3>' +
+        (showProv ? '<div style="font-family:monospace;font-size:10.5px;color:#94a3b8;margin-top:2px;">' + escHtml_c(change.provision) + '</div>' : '');
       inner.innerHTML =
-        '<h3>' + escHtml_c(headLabel) + '</h3>' +
-        showProv +
         '<div class="council-meta">' +
           '<span class="pill ' + kindClass + '">' + (change.kind || 'AMENDED') + '</span>' +
           '<span class="pill ' + layerClass + '">' + (change.layer || '') + '</span>' +
